@@ -33,9 +33,22 @@ if (OPENMP_FOUND)
 endif()
 
 if(BUILD_VGICP_CUDA)
-  find_package(CUDA REQUIRED)
-  include_directories(${CUDA_INCLUDE_DIRS})
-  link_directories(${CUDA_LIBRARY_DIRS})
+    # check for CUDA/nvcc
+    include(CheckLanguage)
+    check_language(CUDA)
+
+    if (CMAKE_CUDA_COMPILER)
+        # CUDA available
+        enable_language(CUDA)
+
+        find_package(CUDAToolkit REQUIRED)
+
+        message(STATUS "CUDA enabled. Toolkit version: ${CUDAToolkit_VERSION}")
+    else()
+        message(ERROR "CUDA requested but unavailable.")
+    endif()
+else()
+    message(STATUS "CUDA support disabled.")
 endif()
 
 ###################################
@@ -69,7 +82,7 @@ endif ()
 target_include_directories(fast_gicp PUBLIC
   include
   ${PCL_INCLUDE_DIRS}
-  ${EIGEN3_INCLUDE_DIR}
+  Eigen3::Eigen
 )
 
 ### APPS ###
@@ -114,7 +127,7 @@ if(BUILD_VGICP_CUDA)
   set(CUDA_NVCC_FLAGS "--expt-relaxed-constexpr")
   add_definitions(-DUSE_VGICP_CUDA)
 
-  cuda_add_library(fast_vgicp_cuda SHARED
+  add_library(fast_vgicp_cuda SHARED
     src/fast_gicp/cuda/fast_vgicp_cuda.cu
     src/fast_gicp/cuda/brute_force_knn.cu
     src/fast_gicp/cuda/covariance_estimation.cu
@@ -129,14 +142,13 @@ if(BUILD_VGICP_CUDA)
   )
   target_include_directories(fast_vgicp_cuda PRIVATE
     include
-    thirdparty/Eigen
-    thirdparty/nvbio
     ${catkin_INCLUDE_DIRS}
   )
   target_link_libraries(fast_vgicp_cuda
-    ${catkin_LIBRARIES}
+    ${catkin_LIBRARIES} 
+    CUDA::cublas
+    Eigen3::Eigen
   )
-  cuda_add_cublas_to_target(fast_vgicp_cuda)
 
   # add vgicp_cuda to libfast_gicp
   target_sources(fast_gicp PRIVATE

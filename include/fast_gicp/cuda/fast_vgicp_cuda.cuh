@@ -8,17 +8,24 @@
 
 #include <fast_gicp/gicp/gicp_settings.hpp>
 
-namespace thrust {
+// Forward declarations of the thrust types named in this header's interface,
+// to keep thrust's heavy headers out of the host-compiled translation units.
+// <thrust/detail/config.h> provides THRUST_NAMESPACE_BEGIN/END so these land in
+// thrust's (inline, versioned) namespace. On CUDA 12.x / CCCL a plain
+// `namespace thrust { ... }` declares colliding symbols ("thrust::pair is
+// ambiguous"); using the macros makes them redeclarations of the real types.
+#include <thrust/detail/config.h>
 
+THRUST_NAMESPACE_BEGIN
 template <typename T1, typename T2>
-class pair;
+struct pair;
 
 template <typename T>
 class device_allocator;
 
 template <typename T, typename Alloc>
 class device_vector;
-}  // namespace thrust
+THRUST_NAMESPACE_END
 
 namespace fast_gicp {
 namespace cuda {

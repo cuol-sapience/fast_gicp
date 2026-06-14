@@ -6,13 +6,57 @@
 #include <thrust/device_vector.h>
 #include <thrust/iterator/zip_iterator.h>
 
-#include <nvbio/basic/vector_view.h>
-#include <nvbio/basic/priority_queue.h>
-
 namespace fast_gicp {
   namespace cuda {
 
 namespace {
+  // Minimal in-place max-heap over a fixed-size buffer, ordered by pair::first
+  // (the squared distance). Replaces nvbio::priority_queue, which is unmaintained
+  // and does not compile with recent CUDA toolkits (CUDA 12.6).
+  struct max_heap {
+    __host__ __device__ explicit max_heap(thrust::pair<float, int>* data, int size = 0) : data(data), size(size) {}
+
+    __host__ __device__ const thrust::pair<float, int>& top() const { return data[0]; }
+
+    __host__ __device__ void push(const thrust::pair<float, int>& value) {
+      int i = size++;
+      while(i > 0) {
+        const int parent = (i - 1) / 2;
+        if(data[parent].first < value.first) {
+          data[i] = data[parent];
+          i = parent;
+        } else {
+          break;
+        }
+      }
+      data[i] = value;
+    }
+
+    __host__ __device__ void pop() {
+      const thrust::pair<float, int> last = data[--size];
+      int i = 0;
+      while(true) {
+        int child = 2 * i + 1;
+        if(child >= size) {
+          break;
+        }
+        if(child + 1 < size && data[child].first < data[child + 1].first) {
+          child++;
+        }
+        if(last.first < data[child].first) {
+          data[i] = data[child];
+          i = child;
+        } else {
+          break;
+        }
+      }
+      data[i] = last;
+    }
+
+    thrust::pair<float, int>* data;
+    int size;
+  };
+
   struct neighborsearch_kernel {
     neighborsearch_kernel(int k, const thrust::device_vector<Eigen::Vector3f>& target, thrust::device_vector<thrust::pair<float, int>>& k_neighbors)
         : k(k), num_target_points(target.size()), target_points_ptr(target.data()), k_neighbors_ptr(k_neighbors.data()) {}
@@ -27,16 +71,8 @@ namespace {
       const Eigen::Vector3f* pts = thrust::raw_pointer_cast(target_points_ptr);
       thrust::pair<float, int>* k_neighbors = thrust::raw_pointer_cast(k_neighbors_ptr) + idx * k;
 
-      // priority queue
-      struct compare_type {
-        bool operator()(const thrust::pair<float, int>& lhs, const thrust::pair<float, int>& rhs) {
-          return lhs.first < rhs.first;
-        }
-      };
-
-      typedef nvbio::vector_view<thrust::pair<float, int>*> vector_type;
-      typedef nvbio::priority_queue<thrust::pair<float, int>, vector_type, compare_type> queue_type;
-      queue_type queue(vector_type(0, k_neighbors - 1));
+      // max-heap over the k nearest neighbors found so far
+      max_heap queue(k_neighbors);
 
       for(int i = 0; i < k; i++) {
         float sq_dist = (pts[i] - x).squaredNorm();
@@ -66,17 +102,8 @@ namespace {
       // target points buffer & nn output buffer
       thrust::pair<float, int>* k_neighbors = thrust::raw_pointer_cast(k_neighbors_ptr) + idx * k;
 
-      // priority queue
-      struct compare_type {
-        bool operator()(const thrust::pair<float, int>& lhs, const thrust::pair<float, int>& rhs) {
-          return lhs.first < rhs.first;
-        }
-      };
-
-      typedef nvbio::vector_view<thrust::pair<float, int>*> vector_type;
-      typedef nvbio::priority_queue<thrust::pair<float, int>, vector_type, compare_type> queue_type;
-      queue_type queue(vector_type(k, k_neighbors - 1));
-      queue.m_size = k;
+      // the search kernel already left the k neighbors arranged as a max-heap
+      max_heap queue(k_neighbors, k);
 
       for(int i = 0; i < k; i++) {
         thrust::pair<float, int> poped = queue.top();
@@ -98,7 +125,7 @@ void brute_force_knn_search(const thrust::device_vector<Eigen::Vector3f>& source
   auto first = thrust::make_zip_iterator(thrust::make_tuple(d_indices.begin(), source.begin()));
   auto last = thrust::make_zip_iterator(thrust::make_tuple(d_indices.end(), source.end()));
 
-  // nvbio::priority_queue requires (k + 1) working space
+  // k neighbor slots per source point
   k_neighbors.resize(source.size() * k, thrust::make_pair(-1.0f, -1));
   thrust::for_each(first, last, neighborsearch_kernel(k, target, k_neighbors));
 
