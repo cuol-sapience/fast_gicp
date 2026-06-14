@@ -73,6 +73,7 @@ add_library(fast_gicp SHARED
 )
 target_link_libraries(fast_gicp
   ${PCL_LIBRARIES}
+  Eigen3::Eigen
 )
 if (OPENMP_FOUND)
     if (TARGET OpenMP::OpenMP_CXX)
@@ -80,9 +81,9 @@ if (OPENMP_FOUND)
     endif ()
 endif ()
 target_include_directories(fast_gicp PUBLIC
-  include
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
   ${PCL_INCLUDE_DIRS}
-  Eigen3::Eigen
 )
 
 ### APPS ###
@@ -109,7 +110,8 @@ if(BUILD_PYTHON_BINDINGS)
     src/python/main.cpp
   )
   target_include_directories(pygicp PUBLIC
-    include
+   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+   $<INSTALL_INTERFACE:include>
     ${PCL_INCLUDE_DIRS}
     ${EIGEN3_INCLUDE_DIR}
   )
@@ -141,7 +143,8 @@ if(BUILD_VGICP_CUDA)
     src/fast_gicp/cuda/ndt_compute_derivatives.cu
   )
   target_include_directories(fast_vgicp_cuda PRIVATE
-    include
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
     ${catkin_INCLUDE_DIRS}
   )
   target_link_libraries(fast_vgicp_cuda
