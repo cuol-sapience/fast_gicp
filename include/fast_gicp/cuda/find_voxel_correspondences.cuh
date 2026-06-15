@@ -7,6 +7,7 @@
 #include <thrust/pair.h>
 #include <thrust/device_vector.h>
 #include <fast_gicp/cuda/gaussian_voxelmap.cuh>
+#include <thrust/execution_policy.h>
 
 namespace fast_gicp {
 namespace cuda {
