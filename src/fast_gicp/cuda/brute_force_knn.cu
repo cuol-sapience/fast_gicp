@@ -1,3 +1,5 @@
+#include <fast_gicp/cuda/brute_force_knn.cuh>
+
 #include <Eigen/Core>
 
 #include <thrust/sequence.h>
