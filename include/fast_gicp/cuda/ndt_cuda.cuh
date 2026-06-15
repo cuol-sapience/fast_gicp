@@ -1,6 +1,8 @@
 #ifndef FAST_GICP_NDT_CUDA_CUH
 #define FAST_GICP_NDT_CUDA_CUH
 
+#include <thrust/pair.h>
+
 #include <memory>
 #include <vector>
 #include <Eigen/Core>
@@ -18,8 +20,6 @@
 #include <thrust/detail/config.h>
 
 THRUST_NAMESPACE_BEGIN
-template <typename T1, typename T2>
-struct pair;
 
 template <typename T>
 class device_allocator;
