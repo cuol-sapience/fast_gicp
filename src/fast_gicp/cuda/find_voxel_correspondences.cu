@@ -3,7 +3,7 @@
 
 #include <thrust/remove.h>
 #include <thrust/device_vector.h>
-#include <thrust/async/transform.h>
+#include <thrust/transform.h>
 #include <fast_gicp/cuda/vector3_hash.cuh>
 #include <fast_gicp/cuda/gaussian_voxelmap.cuh>
 #include <fast_gicp/cuda/find_voxel_correspondences.cuh>
@@ -86,26 +86,18 @@ void find_voxel_correspondences(
   const thrust::device_ptr<const Eigen::Isometry3f>& x_ptr,
   const thrust::device_vector<Eigen::Vector3i>& offsets,
   thrust::device_vector<thrust::pair<int, int>>& correspondences) {
-  std::vector<thrust::system::cuda::unique_eager_event> events(offsets.size());
 
-  // find correspondences
   correspondences.resize(src_points.size() * offsets.size());
-  for(int i=0; i<offsets.size(); i++) {
-    auto event = thrust::async::transform(
+  for (int i = 0; i < offsets.size(); i++) {
+    thrust::transform(
+      thrust::device,
       thrust::counting_iterator<int>(0),
       thrust::counting_iterator<int>(src_points.size()),
       correspondences.begin() + src_points.size() * i,
       find_voxel_correspondences_kernel(voxelmap, src_points, x_ptr, offsets.data() + i));
-
-    events[i] = std::move(event);
   }
 
-  // synchronize
-  for(auto& event: events) {
-    event.wait();
-  }
-
-  // remove invlid correspondences
+  // remove invalid correspondences
   auto remove_loc = thrust::remove_if(correspondences.begin(), correspondences.end(), invalid_correspondence_kernel());
   correspondences.erase(remove_loc, correspondences.end());
 }

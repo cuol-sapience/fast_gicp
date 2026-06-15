@@ -1,9 +1,7 @@
 #include <fast_gicp/cuda/covariance_estimation.cuh>
 
 #include <thrust/device_vector.h>
-
-#include <thrust/async/for_each.h>
-#include <thrust/async/transform.h>
+#include <thrust/transform.h>
 
 namespace fast_gicp {
 namespace cuda {
@@ -131,14 +129,18 @@ void covariance_estimation_rbf(const thrust::device_vector<Eigen::Vector3f>& poi
   thrust::device_vector<NormalDistribution> accumulated_dists(points.size() * num_blocks);
 
   thrust::system::cuda::detail::unique_stream stream;
-  std::vector<thrust::system::cuda::unique_eager_event> events(num_blocks);
-
+  
   // accumulate kerneled point distributions
   for (int i = 0; i < num_blocks; i++) {
     covariance_estimation_kernel kernel(exp_factor_ptr, max_dist_ptr, ext_points.data() + covariance_estimation_kernel::BLOCK_SIZE * i);
-    auto event = thrust::async::transform(points.begin(), points.end(), accumulated_dists.begin() + points.size() * i, kernel);
-    events[i] = std::move(event);
-    thrust::system::cuda::detail::create_dependency(stream, events[i]);
+    
+    thrust::transform(
+      thrust::cuda::par.on(stream.native_handle()),
+      points.begin(), 
+      points.end(), 
+      accumulated_dists.begin() + points.size() * i, 
+      kernel
+    );
   }
 
   // finalize distributions
