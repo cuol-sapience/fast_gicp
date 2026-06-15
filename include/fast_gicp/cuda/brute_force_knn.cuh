@@ -4,6 +4,8 @@
 #include <Eigen/Core>
 
 #include <thrust/device_vector.h>
+#include <thrust/pair.h>
+#include <thrust/tuple.h>
 
 namespace fast_gicp {
   namespace cuda {

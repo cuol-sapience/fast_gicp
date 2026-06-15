@@ -128,14 +128,13 @@ void covariance_estimation_rbf(const thrust::device_vector<Eigen::Vector3f>& poi
 
   thrust::device_vector<NormalDistribution> accumulated_dists(points.size() * num_blocks);
 
-  thrust::system::cuda::detail::unique_stream stream;
-  
   // accumulate kerneled point distributions
   for (int i = 0; i < num_blocks; i++) {
     covariance_estimation_kernel kernel(exp_factor_ptr, max_dist_ptr, ext_points.data() + covariance_estimation_kernel::BLOCK_SIZE * i);
     
+    // Notice just 'thrust::cuda::par' here
     thrust::transform(
-      thrust::cuda::par.on(stream.native_handle()),
+      thrust::cuda::par,
       points.begin(), 
       points.end(), 
       accumulated_dists.begin() + points.size() * i, 
@@ -145,7 +144,7 @@ void covariance_estimation_rbf(const thrust::device_vector<Eigen::Vector3f>& poi
 
   // finalize distributions
   thrust::transform(
-    thrust::cuda::par.on(stream.native_handle()),
+    thrust::cuda::par, // And just 'thrust::cuda::par' here
     thrust::counting_iterator<int>(0),
     thrust::counting_iterator<int>(points.size()),
     covariances.begin(),
