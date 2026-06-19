@@ -1,6 +1,7 @@
 #include <fast_gicp/cuda/covariance_estimation.cuh>
 
 #include <thrust/device_vector.h>
+#include <thrust/functional.h>
 #include <thrust/transform.h>
 
 namespace fast_gicp {
@@ -87,28 +88,10 @@ struct covariance_estimation_kernel {
   thrust::device_ptr<const Eigen::Vector3f> points_ptr;
 };
 
-struct finalization_kernel {
-  finalization_kernel(const int stride, const thrust::device_vector<NormalDistribution>& accumulated_dists)
-  : stride(stride),
-    accumulated_dists_first(accumulated_dists.data()),
-    accumulated_dists_last(accumulated_dists.data() + accumulated_dists.size()) {}
-
-  __host__ __device__ Eigen::Matrix3f operator()(int index) const {
-    const NormalDistribution* dists = thrust::raw_pointer_cast(accumulated_dists_first);
-    const NormalDistribution* dists_last = thrust::raw_pointer_cast(accumulated_dists_last);
-    const int num_dists = dists_last - dists;
-
-    NormalDistribution sum = dists[index];
-    for (int dist_index = index + stride; dist_index < num_dists; dist_index += stride) {
-      sum += dists[dist_index];
-    }
-
-    return sum.finalize().cov;
+struct finalize_cov_kernel {
+  __host__ __device__ Eigen::Matrix3f operator()(NormalDistribution dist) const {
+    return dist.finalize().cov;
   }
-
-  const int stride;
-  thrust::device_ptr<const NormalDistribution> accumulated_dists_first;
-  thrust::device_ptr<const NormalDistribution> accumulated_dists_last;
 };
 
 void covariance_estimation_rbf(const thrust::device_vector<Eigen::Vector3f>& points, double kernel_width, double max_dist, thrust::device_vector<Eigen::Matrix3f>& covariances) {
@@ -126,29 +109,24 @@ void covariance_estimation_rbf(const thrust::device_vector<Eigen::Vector3f>& poi
   thrust::copy(points.begin(), points.end(), ext_points.begin());
   thrust::fill(ext_points.begin() + points.size(), ext_points.end(), Eigen::Vector3f(0.0f, 0.0f, 0.0f));
 
-  thrust::device_vector<NormalDistribution> accumulated_dists(points.size() * num_blocks);
+  // Running sum per point: O(n) peak memory instead of O(n * num_blocks).
+  // Previously accumulated_dists held all num_blocks slices simultaneously,
+  // which grew to ~3 GB for large maps (OOM on Jetson Orin Nano 8 GB).
+  thrust::device_vector<NormalDistribution> running_dists(points.size(), NormalDistribution::zero());
+  thrust::device_vector<NormalDistribution> block_dists(points.size());
 
-  // accumulate kerneled point distributions
   for (int i = 0; i < num_blocks; i++) {
     covariance_estimation_kernel kernel(exp_factor_ptr, max_dist_ptr, ext_points.data() + covariance_estimation_kernel::BLOCK_SIZE * i);
-    
-    // Notice just 'thrust::cuda::par' here
+    thrust::transform(thrust::cuda::par, points.begin(), points.end(), block_dists.begin(), kernel);
     thrust::transform(
       thrust::cuda::par,
-      points.begin(), 
-      points.end(), 
-      accumulated_dists.begin() + points.size() * i, 
-      kernel
-    );
+      running_dists.begin(), running_dists.end(),
+      block_dists.begin(),
+      running_dists.begin(),
+      thrust::plus<NormalDistribution>());
   }
 
-  // finalize distributions
-  thrust::transform(
-    thrust::cuda::par, // And just 'thrust::cuda::par' here
-    thrust::counting_iterator<int>(0),
-    thrust::counting_iterator<int>(points.size()),
-    covariances.begin(),
-    finalization_kernel(points.size(), accumulated_dists));
+  thrust::transform(thrust::cuda::par, running_dists.begin(), running_dists.end(), covariances.begin(), finalize_cov_kernel());
 }
 
 }  // namespace cuda
