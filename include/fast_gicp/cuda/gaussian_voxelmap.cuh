@@ -28,7 +28,7 @@ private:
   void create_bucket_table(cudaStream_t stream, const thrust::device_vector<Eigen::Vector3f>& points);
 
 public:
-  const int init_num_buckets;
+  int init_num_buckets;
   VoxelMapInfo voxelmap_info;
   thrust::device_vector<VoxelMapInfo> voxelmap_info_ptr;
 
