@@ -262,6 +262,14 @@ void FastVGICPCudaCore::create_target_voxelmap() {
   voxelmap->create_voxelmap(*target_points, *target_covariances);
 }
 
+void FastVGICPCudaCore::create_target_voxelmap_ndt() {
+  assert(target_points);
+  if(!voxelmap) {
+    voxelmap.reset(new GaussianVoxelMap(resolution));
+  }
+  voxelmap->create_voxelmap(*target_points);
+}
+
 void FastVGICPCudaCore::update_correspondences(const Eigen::Isometry3d& trans) {
   thrust::device_vector<Eigen::Isometry3f> trans_ptr(1);
   trans_ptr[0] = trans.cast<float>();

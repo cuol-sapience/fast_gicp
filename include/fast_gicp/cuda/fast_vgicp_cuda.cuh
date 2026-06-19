@@ -72,6 +72,7 @@ public:
   void get_voxel_correspondences(std::vector<std::pair<int, int>>& correspondences) const;
 
   void create_target_voxelmap();
+  void create_target_voxelmap_ndt();
 
   void update_correspondences(const Eigen::Isometry3d& trans);
 

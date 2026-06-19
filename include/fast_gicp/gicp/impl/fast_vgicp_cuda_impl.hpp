@@ -134,8 +134,10 @@ void FastVGICPCuda<PointSource, PointTarget>::setInputTarget(const PointCloudTar
       vgicp_cuda_->calculate_target_covariances(regularization_method_);
       break;
     case NearestNeighborMethod::GPU_RBF_KERNEL:
-      vgicp_cuda_->calculate_target_covariances_rbf(regularization_method_);
-      break;
+      // For the target (accumulated local map), use NDT per-voxel sample covariance: O(n).
+      // The O(n^2) RBF pass is only needed for the source scan (done in setInputSource).
+      vgicp_cuda_->create_target_voxelmap_ndt();
+      return;
   }
   vgicp_cuda_->create_target_voxelmap();
 }
