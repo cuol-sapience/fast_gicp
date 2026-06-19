@@ -280,6 +280,7 @@ void GaussianVoxelMap::create_bucket_table(cudaStream_t stream, const thrust::de
     if (static_cast<double>(h_voxels_failures[1]) / points.size() < 0.01) {
       voxelmap_info.num_voxels = h_voxels_failures[0];
       voxelmap_info_ptr[0] = voxelmap_info;
+      init_num_buckets = num_buckets;  // start here next call instead of 8192
       break;
     }
   }
