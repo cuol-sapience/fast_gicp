@@ -262,7 +262,8 @@ void GaussianVoxelMap::create_bucket_table(cudaStream_t stream, const thrust::de
   thrust::device_vector<thrust::pair<int, int>> index_buckets;
   thrust::device_vector<int> voxels_failures(2, 0);
 
-  for (int num_buckets = init_num_buckets; init_num_buckets * 4; num_buckets *= 2) {
+  const int max_buckets = init_num_buckets * 64;
+  for (int num_buckets = init_num_buckets; num_buckets > 0 && num_buckets <= max_buckets; num_buckets *= 2) {
     voxelmap_info.num_buckets = num_buckets;
     voxelmap_info_ptr[0] = voxelmap_info;
 
@@ -276,6 +277,7 @@ void GaussianVoxelMap::create_bucket_table(cudaStream_t stream, const thrust::de
       thrust::counting_iterator<int>(points.size()),
       voxel_bucket_assignment_kernel(voxelmap_info_ptr.data(), coords, index_buckets, voxels_failures));
 
+    cudaStreamSynchronize(stream);
     thrust::host_vector<int> h_voxels_failures = voxels_failures;
     if (static_cast<double>(h_voxels_failures[1]) / points.size() < 0.01) {
       voxelmap_info.num_voxels = h_voxels_failures[0];
@@ -287,6 +289,10 @@ void GaussianVoxelMap::create_bucket_table(cudaStream_t stream, const thrust::de
 
   buckets.resize(index_buckets.size());
   thrust::transform(thrust::cuda::par.on(stream), index_buckets.begin(), index_buckets.end(), buckets.begin(), voxel_coord_select_kernel(coords));
+  // Sync before returning: coords and index_buckets are local device_vectors whose
+  // raw pointers are captured by the kernel above. Without this sync, their cudaFree
+  // in the destructors races with the still-running kernel → cudaErrorIllegalAddress.
+  cudaStreamSynchronize(stream);
 }
 
 }  // namespace cuda
